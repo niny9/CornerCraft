@@ -4,6 +4,7 @@ import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, useGLTF } from '@react-three/drei';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 
 export interface ModelItem {
   url: string;
@@ -16,8 +17,13 @@ interface ModelViewerProps {
   backgroundUrl?: string;
 }
 
-// 全局存储背景场景，供物品碰撞检测使用
+// 全局存储，供缩放和碰撞检测使用
 let bgSceneRef: THREE.Object3D | null = null;
+let bgBaseScale = 1;
+let bgCenterX = 0;
+let bgCenterY = 0;
+let itemsGroupRef: THREE.Group | null = null;
+let currentZoom = 1;
 
 function BackgroundModel({ url, onLoaded }: { url: string; onLoaded: () => void }) {
   const { scene } = useGLTF(url);
@@ -39,8 +45,11 @@ function BackgroundModel({ url, onLoaded }: { url: string; onLoaded: () => void 
     box.getCenter(center);
 
     const scale = Math.max(visibleWidth / modelSize.x, visibleHeight / modelSize.y);
-    cloned.scale.setScalar(scale);
-    cloned.position.set(-center.x * scale, -center.y * scale, -dist);
+    bgBaseScale = scale;
+    bgCenterX = center.x;
+    bgCenterY = center.y;
+    cloned.scale.setScalar(scale * currentZoom);
+    cloned.position.set(-center.x * scale * currentZoom, -center.y * scale * currentZoom, -dist);
 
     camera.add(cloned);
     bgSceneRef = cloned;
@@ -54,7 +63,7 @@ function BackgroundModel({ url, onLoaded }: { url: string; onLoaded: () => void 
   return null;
 }
 
-function ItemModel({ url, position, onDragStart, onDragEnd }: ModelItem & { onDragStart: () => void; onDragEnd: () => void }) {
+function ItemModel({ url, position, controlsRef }: ModelItem & { controlsRef: React.RefObject<OrbitControlsImpl | null> }) {
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(), [scene]);
   const { camera, size, gl } = useThree();
@@ -136,7 +145,7 @@ function ItemModel({ url, position, onDragStart, onDragEnd }: ModelItem & { onDr
     const onPointerUp = () => {
       if (isDragging.current) {
         isDragging.current = false;
-        onDragEnd();
+        if (controlsRef.current) controlsRef.current.enabled = true;
       }
     };
 
@@ -146,7 +155,7 @@ function ItemModel({ url, position, onDragStart, onDragEnd }: ModelItem & { onDr
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerUp);
     };
-  }, [camera, gl, dragPlane, dragOffset, raycasterRef, onDragEnd]);
+  }, [camera, gl, dragPlane, dragOffset, raycasterRef, controlsRef]);
 
   return (
     <group
@@ -165,12 +174,37 @@ function ItemModel({ url, position, onDragStart, onDragEnd }: ModelItem & { onDr
         const hit = new THREE.Vector3();
         raycasterRef.ray.intersectPlane(dragPlane, hit);
         dragOffset.copy(hit).sub(groupRef.current!.position);
-        onDragStart();
+        if (controlsRef.current) controlsRef.current.enabled = false;
       }}
     >
       <primitive object={cloned} />
     </group>
   );
+}
+
+function ZoomHandler() {
+  const { gl } = useThree();
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      currentZoom = Math.max(0.5, Math.min(3, currentZoom - e.deltaY * 0.001));
+      // 缩放背景（含位置偏移同步缩放，保持居中）
+      if (bgSceneRef) {
+        const s = bgBaseScale * currentZoom;
+        bgSceneRef.scale.setScalar(s);
+        bgSceneRef.position.x = -bgCenterX * s;
+        bgSceneRef.position.y = -bgCenterY * s;
+      }
+      // 缩放物品组（位置和模型大小一起等比缩放）
+      if (itemsGroupRef) {
+        itemsGroupRef.scale.setScalar(currentZoom);
+      }
+    };
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', onWheel);
+  }, [gl]);
+  return null;
 }
 
 function LoadingSpinner() {
@@ -182,8 +216,14 @@ function LoadingSpinner() {
   );
 }
 
-function SceneItems({ models, backgroundUrl, onDragStart, onDragEnd }: ModelViewerProps & { onDragStart: () => void; onDragEnd: () => void }) {
+function SceneItems({ models, backgroundUrl, controlsRef }: ModelViewerProps & { controlsRef: React.RefObject<OrbitControlsImpl | null> }) {
   const [bgLoaded, setBgLoaded] = useState(!backgroundUrl);
+  const groupRef = useRef<THREE.Group>(null);
+
+  useEffect(() => {
+    itemsGroupRef = groupRef.current;
+    return () => { itemsGroupRef = null; };
+  }, []);
 
   return (
     <>
@@ -192,17 +232,19 @@ function SceneItems({ models, backgroundUrl, onDragStart, onDragEnd }: ModelView
           <BackgroundModel url={backgroundUrl} onLoaded={() => setBgLoaded(true)} />
         </Suspense>
       )}
-      {bgLoaded && models.map((model, i) => (
-        <Suspense key={`${model.url}-${i}`} fallback={null}>
-          <ItemModel url={model.url} position={model.position} onDragStart={onDragStart} onDragEnd={onDragEnd} />
-        </Suspense>
-      ))}
+      <group ref={groupRef}>
+        {bgLoaded && models.map((model, i) => (
+          <Suspense key={`${model.url}-${i}`} fallback={null}>
+            <ItemModel url={model.url} position={model.position} controlsRef={controlsRef} />
+          </Suspense>
+        ))}
+      </group>
     </>
   );
 }
 
 export default function ModelViewer({ models, backgroundUrl }: ModelViewerProps) {
-  const [orbitEnabled, setOrbitEnabled] = useState(true);
+  const controlsRef = useRef<OrbitControlsImpl | null>(null);
 
   return (
     <div className="w-full h-96 bg-gray-100 rounded-lg">
@@ -211,9 +253,10 @@ export default function ModelViewer({ models, backgroundUrl }: ModelViewerProps)
         <ambientLight intensity={0.5} />
         <directionalLight position={[10, 10, 5]} intensity={1} />
         <Suspense fallback={<LoadingSpinner />}>
-          <SceneItems models={models} backgroundUrl={backgroundUrl} onDragStart={() => setOrbitEnabled(false)} onDragEnd={() => setOrbitEnabled(true)} />
+          <SceneItems models={models} backgroundUrl={backgroundUrl} controlsRef={controlsRef} />
         </Suspense>
-        <OrbitControls enabled={orbitEnabled} enableZoom={false} />
+        <OrbitControls ref={controlsRef} enableZoom={false} />
+        <ZoomHandler />
       </Canvas>
     </div>
   );
