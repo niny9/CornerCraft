@@ -23,11 +23,21 @@ export async function POST(request: NextRequest) {
     // 暂时返回模拟数据
     await new Promise(resolve => setTimeout(resolve, 2000));
 
+    // 所有模型共用背景的缩放系数，GLB 原始尺寸比例自动保留
+    // fixed: 固定物体不可拖拽
+    // bounds: 归一化坐标 [minX, minY, maxX, maxY] 限制拖拽范围
+    // scale: 可选微调，默认 1，不需要预定义模型大小
+    //
+    // 场景布局：背景房间 + 桌子居中偏下 + 两个杯子放在桌面上
+    // 桌子中心 (0.5, 0.35)，桌面范围大约 X: 0.25~0.75, Y: 0.3~0.45
+    const tableSurface: [number, number, number, number] = [0.25, 0.3, 0.75, 0.45];
+
     return NextResponse.json({
       bgUrl: '/bg.glb',
       things: [
-        { url: '/02_glb.glb', position: [0.3, 0.4, 0] },
-        { url: '/02_glb.glb', position: [0.7, 0.6, 0] },
+        { id: 'table-1', url: '/table.glb', position: [0.5, 0.35, 0], fixed: true },
+        { id: 'cup-1', url: '/cup.glb', position: [0.4, 0.38, 0], bounds: tableSurface },
+        { id: 'cup-2', url: '/cup.glb', position: [0.6, 0.38, 0], bounds: tableSurface },
       ],
       success: true,
     });

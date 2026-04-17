@@ -2,11 +2,12 @@
 
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, useGLTF } from '@react-three/drei';
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 
 export interface ModelItem {
+  id: string;
   url: string;
   /** 归一化坐标，0~1 表示背景内的相对位置，(0.5, 0.5) 为中心 */
   position?: [number, number, number];
@@ -15,6 +16,8 @@ export interface ModelItem {
 interface ModelViewerProps {
   models: ModelItem[];
   backgroundUrl?: string;
+  onRemoveModel?: (index: number) => void;
+  onPositionChange?: (index: number, position: [number, number, number]) => void;
 }
 
 // 全局存储，供缩放和碰撞检测使用
@@ -29,6 +32,18 @@ function BackgroundModel({ url, onLoaded }: { url: string; onLoaded: () => void 
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(), [scene]);
   const { camera, size } = useThree();
+  const onLoadedRef = useRef(onLoaded);
+  onLoadedRef.current = onLoaded;
+
+  // 只计算一次原始 bounding box，缓存起来
+  const originalMetrics = useMemo(() => {
+    const box = new THREE.Box3().setFromObject(cloned);
+    const modelSize = new THREE.Vector3();
+    box.getSize(modelSize);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    return { modelSize, center };
+  }, [cloned]);
 
   useEffect(() => {
     const cam = camera as THREE.PerspectiveCamera;
@@ -38,11 +53,7 @@ function BackgroundModel({ url, onLoaded }: { url: string; onLoaded: () => void 
     const visibleHeight = 2 * Math.tan(vFov / 2) * dist;
     const visibleWidth = visibleHeight * aspect;
 
-    const box = new THREE.Box3().setFromObject(cloned);
-    const modelSize = new THREE.Vector3();
-    box.getSize(modelSize);
-    const center = new THREE.Vector3();
-    box.getCenter(center);
+    const { modelSize, center } = originalMetrics;
 
     const scale = Math.max(visibleWidth / modelSize.x, visibleHeight / modelSize.y);
     bgBaseScale = scale;
@@ -53,17 +64,17 @@ function BackgroundModel({ url, onLoaded }: { url: string; onLoaded: () => void 
 
     camera.add(cloned);
     bgSceneRef = cloned;
-    onLoaded();
+    onLoadedRef.current();
     return () => {
       camera.remove(cloned);
       bgSceneRef = null;
     };
-  }, [cloned, camera, size, onLoaded]);
+  }, [cloned, camera, size, originalMetrics]);
 
   return null;
 }
 
-function ItemModel({ url, position, controlsRef }: ModelItem & { controlsRef: React.RefObject<OrbitControlsImpl | null> }) {
+function ItemModel({ url, position, controlsRef, index, onRemoveModel, onPositionChange, onContextMenu }: ModelItem & { controlsRef: React.RefObject<OrbitControlsImpl | null>; index: number; onRemoveModel?: (index: number) => void; onPositionChange?: (index: number, position: [number, number, number]) => void; onContextMenu?: (index: number, x: number, y: number) => void }) {
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(), [scene]);
   const { camera, size, gl } = useThree();
@@ -86,8 +97,11 @@ function ItemModel({ url, position, controlsRef }: ModelItem & { controlsRef: Re
   const limitsRef = useRef(limits);
   useEffect(() => { limitsRef.current = limits; }, [limits]);
 
+  const isPositioned = useRef(false);
+
   useEffect(() => {
-    if (!groupRef.current) return;
+    if (!groupRef.current || isPositioned.current) return;
+    isPositioned.current = true;
     const { hw, hh, visibleWidth, visibleHeight } = limits;
     const [nx = 0.5, ny = 0.5] = position ?? [0.5, 0.5];
     const x = (nx - 0.5) * visibleWidth;
@@ -105,7 +119,8 @@ function ItemModel({ url, position, controlsRef }: ModelItem & { controlsRef: Re
       Math.max(-hh, Math.min(hh, y)),
       camera.position.z - 3,
     );
-  }, [cloned, camera, size, position, limits]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cloned, camera, size, limits]);
 
   useEffect(() => {
     const canvas = gl.domElement;
@@ -146,6 +161,13 @@ function ItemModel({ url, position, controlsRef }: ModelItem & { controlsRef: Re
       if (isDragging.current) {
         isDragging.current = false;
         if (controlsRef.current) controlsRef.current.enabled = true;
+        if (onPositionChange && groupRef.current) {
+          const p = groupRef.current.position;
+          const { visibleWidth, visibleHeight } = limitsRef.current;
+          const nx = p.x / visibleWidth + 0.5;
+          const ny = p.y / visibleHeight + 0.5;
+          onPositionChange(index, [nx, ny, 0]);
+        }
       }
     };
 
@@ -155,12 +177,22 @@ function ItemModel({ url, position, controlsRef }: ModelItem & { controlsRef: Re
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerUp);
     };
-  }, [camera, gl, dragPlane, dragOffset, raycasterRef, controlsRef]);
+  }, [camera, gl, dragPlane, dragOffset, raycasterRef, controlsRef, onPositionChange, index]);
 
   return (
     <group
       ref={groupRef}
+      onContextMenu={(e) => {
+        e.stopPropagation();
+        if (onContextMenu) {
+          const rect = gl.domElement.getBoundingClientRect();
+          const x = e.nativeEvent.clientX - rect.left;
+          const y = e.nativeEvent.clientY - rect.top;
+          onContextMenu(index, x, y);
+        }
+      }}
       onPointerDown={(e) => {
+        if (e.nativeEvent.button === 2) return; // 右键不启动拖拽
         e.stopPropagation();
         isDragging.current = true;
         dragPlane.setFromNormalAndCoplanarPoint(
@@ -216,8 +248,9 @@ function LoadingSpinner() {
   );
 }
 
-function SceneItems({ models, backgroundUrl, controlsRef }: ModelViewerProps & { controlsRef: React.RefObject<OrbitControlsImpl | null> }) {
+function SceneItems({ models, backgroundUrl, controlsRef, onRemoveModel, onPositionChange, onContextMenu }: ModelViewerProps & { controlsRef: React.RefObject<OrbitControlsImpl | null>; onContextMenu?: (index: number, x: number, y: number) => void }) {
   const [bgLoaded, setBgLoaded] = useState(!backgroundUrl);
+  const handleBgLoaded = useCallback(() => setBgLoaded(true), []);
   const groupRef = useRef<THREE.Group>(null);
 
   useEffect(() => {
@@ -229,13 +262,13 @@ function SceneItems({ models, backgroundUrl, controlsRef }: ModelViewerProps & {
     <>
       {backgroundUrl && (
         <Suspense fallback={null}>
-          <BackgroundModel url={backgroundUrl} onLoaded={() => setBgLoaded(true)} />
+          <BackgroundModel url={backgroundUrl} onLoaded={handleBgLoaded} />
         </Suspense>
       )}
       <group ref={groupRef}>
         {bgLoaded && models.map((model, i) => (
-          <Suspense key={`${model.url}-${i}`} fallback={null}>
-            <ItemModel url={model.url} position={model.position} controlsRef={controlsRef} />
+          <Suspense key={model.id} fallback={null}>
+            <ItemModel id={model.id} url={model.url} position={model.position} controlsRef={controlsRef} index={i} onRemoveModel={onRemoveModel} onPositionChange={onPositionChange} onContextMenu={onContextMenu} />
           </Suspense>
         ))}
       </group>
@@ -243,21 +276,70 @@ function SceneItems({ models, backgroundUrl, controlsRef }: ModelViewerProps & {
   );
 }
 
-export default function ModelViewer({ models, backgroundUrl }: ModelViewerProps) {
+interface SceneCanvasProps {
+  models: ModelItem[];
+  backgroundUrl?: string;
+  onPositionChange?: (index: number, position: [number, number, number]) => void;
+  onContextMenu?: (index: number, x: number, y: number) => void;
+}
+
+const SceneCanvas = memo(function SceneCanvas({ models, backgroundUrl, onPositionChange, onContextMenu }: SceneCanvasProps) {
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
 
   return (
-    <div className="w-full h-96 bg-gray-100 rounded-lg">
-      <Canvas>
-        <PerspectiveCamera makeDefault position={[0, 0, 5]} />
-        <ambientLight intensity={0.5} />
-        <directionalLight position={[10, 10, 5]} intensity={1} />
-        <Suspense fallback={<LoadingSpinner />}>
-          <SceneItems models={models} backgroundUrl={backgroundUrl} controlsRef={controlsRef} />
-        </Suspense>
-        <OrbitControls ref={controlsRef} enableZoom={false} />
-        <ZoomHandler />
-      </Canvas>
+    <Canvas>
+      <PerspectiveCamera makeDefault position={[0, 0, 5]} />
+      <ambientLight intensity={0.5} />
+      <directionalLight position={[10, 10, 5]} intensity={1} />
+      <Suspense fallback={<LoadingSpinner />}>
+        <SceneItems
+          models={models}
+          backgroundUrl={backgroundUrl}
+          controlsRef={controlsRef}
+          onPositionChange={onPositionChange}
+          onContextMenu={onContextMenu}
+        />
+      </Suspense>
+      <OrbitControls ref={controlsRef} enableZoom={false} />
+      <ZoomHandler />
+    </Canvas>
+  );
+});
+
+export default function ModelViewer({ models, backgroundUrl, onRemoveModel, onPositionChange }: ModelViewerProps) {
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; index: number } | null>(null);
+  const handleContextMenu = useCallback((index: number, x: number, y: number) => setContextMenu({ index, x, y }), []);
+
+  return (
+    <div
+      className="w-full h-96 bg-gray-100 rounded-lg relative"
+      onContextMenu={(e) => e.preventDefault()}
+      onClick={() => setContextMenu(null)}
+    >
+      <SceneCanvas
+        models={models}
+        backgroundUrl={backgroundUrl}
+        onPositionChange={onPositionChange}
+        onContextMenu={handleContextMenu}
+      />
+
+      {/* 右键删除图标 */}
+      {contextMenu && (
+        <button
+          className="absolute flex items-center justify-center w-8 h-8 bg-red-500 hover:bg-red-600 rounded-full shadow-lg z-50 transition-colors"
+          style={{ left: contextMenu.x - 16, top: contextMenu.y - 16 }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemoveModel?.(contextMenu.index);
+            setContextMenu(null);
+          }}
+          title="删除"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-white" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }
