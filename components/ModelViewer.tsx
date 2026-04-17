@@ -34,8 +34,6 @@ function BackgroundModel({ url, onLoaded }: { url: string; onLoaded: () => void 
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(), [scene]);
   const { camera, size } = useThree();
-  const onLoadedRef = useRef(onLoaded);
-  onLoadedRef.current = onLoaded;
 
   // 只计算一次原始 bounding box，缓存起来
   const originalMetrics = useMemo(() => {
@@ -66,17 +64,17 @@ function BackgroundModel({ url, onLoaded }: { url: string; onLoaded: () => void 
 
     camera.add(cloned);
     bgSceneRef = cloned;
-    onLoadedRef.current();
+    onLoaded();
     return () => {
       camera.remove(cloned);
       bgSceneRef = null;
     };
-  }, [cloned, camera, size, originalMetrics]);
+  }, [cloned, camera, size, originalMetrics, onLoaded]);
 
   return null;
 }
 
-function ItemModel({ url, position, controlsRef, index, onRemoveModel, onPositionChange, onContextMenu }: ModelItem & { controlsRef: React.RefObject<OrbitControlsImpl | null>; index: number; onRemoveModel?: (index: number) => void; onPositionChange?: (index: number, position: [number, number, number]) => void; onContextMenu?: (index: number, x: number, y: number) => void }) {
+function ItemModel({ url, position, controlsRef, index, onPositionChange, onContextMenu }: ModelItem & { controlsRef: React.RefObject<OrbitControlsImpl | null>; index: number; onPositionChange?: (index: number, position: [number, number, number]) => void; onContextMenu?: (index: number, x: number, y: number) => void }) {
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(), [scene]);
   const { camera, size, gl } = useThree();
@@ -250,7 +248,7 @@ function LoadingSpinner() {
   );
 }
 
-function SceneItems({ models, backgroundUrl, controlsRef, onRemoveModel, onPositionChange, onContextMenu }: ModelViewerProps & { controlsRef: React.RefObject<OrbitControlsImpl | null>; onContextMenu?: (index: number, x: number, y: number) => void }) {
+function SceneItems({ models, backgroundUrl, controlsRef, onPositionChange, onContextMenu }: ModelViewerProps & { controlsRef: React.RefObject<OrbitControlsImpl | null>; onContextMenu?: (index: number, x: number, y: number) => void }) {
   const [bgLoaded, setBgLoaded] = useState(!backgroundUrl);
   const handleBgLoaded = useCallback(() => setBgLoaded(true), []);
   const groupRef = useRef<THREE.Group>(null);
@@ -270,7 +268,7 @@ function SceneItems({ models, backgroundUrl, controlsRef, onRemoveModel, onPosit
       <group ref={groupRef}>
         {bgLoaded && models.map((model, i) => (
           <Suspense key={model.id} fallback={null}>
-            <ItemModel id={model.id} url={model.url} position={model.position} controlsRef={controlsRef} index={i} onRemoveModel={onRemoveModel} onPositionChange={onPositionChange} onContextMenu={onContextMenu} />
+            <ItemModel id={model.id} url={model.url} position={model.position} controlsRef={controlsRef} index={i} onPositionChange={onPositionChange} onContextMenu={onContextMenu} />
           </Suspense>
         ))}
       </group>

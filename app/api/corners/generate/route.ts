@@ -8,14 +8,14 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      bgUrl: result.backgroundUrl,
-      things: result.things,
       project: result.project,
       sceneUnderstanding: result.sceneUnderstanding,
       plan: result.plan,
+      backgroundUrl: result.backgroundUrl,
+      things: result.things,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : '生成3D模型失败';
+    const message = error instanceof Error ? error.message : '生成方案失败';
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
