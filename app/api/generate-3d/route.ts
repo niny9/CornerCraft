@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       bgUrl: '/bg.glb',
       things: [
-        { id: 'table-1', url: '/table.glb', position: [0.5, 0.35, 0], fixed: true },
+        { id: 'table-1',  url: '/table.glb', position: [0.5, 0.35, 0], fixed: true },
         { id: 'cup-1', url: '/cup.glb', position: [0.4, 0.38, 0], bounds: tableSurface },
         { id: 'cup-2', url: '/cup.glb', position: [0.6, 0.38, 0], bounds: tableSurface },
       ],

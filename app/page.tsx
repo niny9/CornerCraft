@@ -1,8 +1,28 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { Suspense, useCallback, useMemo, useRef, useState } from 'react';
+import { Canvas } from '@react-three/fiber';
+import { useGLTF, OrbitControls } from '@react-three/drei';
+import * as THREE from 'three';
 import CameraCapture from '@/components/CameraCapture';
 import ModelViewer, { ModelItem } from '@/components/ModelViewer';
+
+function MiniModel({ url }: { url: string }) {
+  const { scene } = useGLTF(url);
+  const cloned = useMemo(() => {
+    const c = scene.clone();
+    const box = new THREE.Box3().setFromObject(c);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    c.position.sub(center);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z);
+    if (maxDim > 0) c.scale.multiplyScalar(1.2 / maxDim);
+    return c;
+  }, [scene]);
+  return <primitive object={cloned} />;
+}
 
 interface RemovedModel extends ModelItem {
   lastPosition: [number, number, number];
@@ -14,7 +34,7 @@ export default function Home() {
   const [removedModels, setRemovedModels] = useState<RemovedModel[]>([]);
   const [backgroundUrl, setBackgroundUrl] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
-  const [totalSlots, setTotalSlots] = useState(0);
+  const [initialModels, setInitialModels] = useState<ModelItem[]>([]);
   const draggedPositions = useRef<Map<number, [number, number, number]>>(new Map());
   const modelsRef = useRef<ModelItem[]>([]);
   modelsRef.current = models;
@@ -38,7 +58,7 @@ export default function Home() {
       setBackgroundUrl(data.bgUrl);
       const things = data.things ?? [];
       setModels(things);
-      setTotalSlots(things.length);
+      setInitialModels(things);
     } catch (error) {
       console.error('生成3D模型失败:', error);
     } finally {
@@ -71,14 +91,10 @@ export default function Home() {
     const item = removedModelsRef.current[index];
     if (!item) return;
 
-    setModels(m => [...m, { id: item.id, url: item.url, position: item.lastPosition }]);
+    setModels(m => [...m, { id: item.id, url: item.url, name: item.name, color: item.color, position: item.lastPosition }]);
     setRemovedModels(prev => prev.filter((_, i) => i !== index));
   }, []);
 
-  const getModelName = (url: string) => {
-    const name = url.split('/').pop()?.replace('.glb', '') ?? url;
-    return name.charAt(0).toUpperCase() + name.slice(1);
-  };
 
   return (
     <main className="min-h-screen p-8 bg-gradient-to-br from-gray-900 to-gray-800">
@@ -123,23 +139,29 @@ export default function Home() {
             )}
 
             {/* 已移除物品列表 */}
-            {totalSlots > 0 && !loading && (
+            {initialModels.length > 0 && !loading && (
               <div className="mt-3 space-y-2">
                 <h3 className="text-sm font-medium text-gray-500">已移除</h3>
-                <div className="flex flex-wrap gap-2 min-h-[40px]">
+                <div className="flex flex-wrap gap-2 min-h-[56px]">
                   {removedModels.map((model, i) => (
                     <button
-                      key={`removed-${i}`}
+                      key={model.id}
                       onClick={() => handleRestoreModel(i)}
-                      className="flex items-center gap-2 bg-gray-100 rounded-lg px-3 py-2 text-sm text-gray-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                      className="w-14 h-14 rounded-lg bg-gray-100 hover:bg-blue-50 transition-colors overflow-hidden"
                       title="点击还原"
                     >
-                      <span>{getModelName(model.url)}</span>
-                      <span className="text-xs">↩</span>
+                      <Canvas camera={{ position: [0, 0, 3], fov: 40 }}>
+                        <ambientLight intensity={0.8} />
+                        <directionalLight position={[2, 2, 2]} intensity={0.6} />
+                        <Suspense fallback={null}>
+                          <MiniModel url={model.url} />
+                        </Suspense>
+                        <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={4} />
+                      </Canvas>
                     </button>
                   ))}
-                  {Array.from({ length: totalSlots - removedModels.length }).map((_, i) => (
-                    <div key={`slot-${i}`} className="w-20 h-9 border-2 border-dashed border-gray-200 rounded-lg" />
+                  {Array.from({ length: initialModels.length - removedModels.length }).map((_, i) => (
+                    <div key={`slot-${i}`} className="w-14 h-14 border-2 border-dashed border-gray-200 rounded-lg" />
                   ))}
                 </div>
               </div>

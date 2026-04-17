@@ -9,6 +9,8 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 export interface ModelItem {
   id: string;
   url: string;
+  name?: string;
+  color?: string;
   /** 归一化坐标，0~1 表示背景内的相对位置，(0.5, 0.5) 为中心 */
   position?: [number, number, number];
 }
