@@ -20,7 +20,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           source: "."
-          target: "/var/www/photo-to-3d"
+          target: "/home/admin/photo-to-3d/"
           rm: true   # 关键：先清空旧文件
 
       - name: Run deploy script
