@@ -7,7 +7,9 @@ on:
 
 env:
   REGISTRY: ${{ secrets.ACR_REGISTRY }}
-  IMAGE_NAME: photo-to-3d
+  NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
+  IMAGE_NAME: corner-craft
+  IMAGE: ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/corner-craft
 
 jobs:
   build-and-deploy:
@@ -17,22 +19,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 登录 ACR
       - name: Login to ACR
         uses: docker/login-action@v3
         with:
-          registry: ${{ secrets.ACR_REGISTRY }}
+          registry: ${{ env.REGISTRY }}
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
+      # Build + Push
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: |
-            ${{ secrets.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ secrets.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
 
+      # 部署
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -40,12 +45,17 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            docker pull ${{ secrets.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            docker stop photo-to-3d || true
-            docker rm photo-to-3d || true
+            docker login ${{ env.REGISTRY }} -u '${{ secrets.ACR_USERNAME }}' -p '${{ secrets.ACR_PASSWORD }}'
+
+            docker pull ${{ env.IMAGE }}:latest
+
+            docker stop corner-craft || true
+            docker rm corner-craft || true
+
             docker run -d \
-              --name photo-to-3d \
+              --name corner-craft \
               --restart unless-stopped \
               -p 3000:3000 \
-              ${{ secrets.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+              ${{ env.IMAGE }}:latest
+
             docker image prune -f

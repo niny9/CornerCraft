@@ -1,210 +1,183 @@
 # 部署到阿里云服务器指南
 
+## 当前部署方式
+
+当前项目使用 GitHub Actions 自动构建 Docker 镜像，推送到阿里云容器镜像服务（ACR），再通过 SSH 登录服务器执行 `docker pull` 和 `docker run` 完成发布。
+
+相关文件：
+- [Dockerfile](Dockerfile)
+- [.github/workflows/deploy.yml](.github/workflows/deploy.yml)
+- [next.config.ts](next.config.ts)
+
 ## 前置准备
 
-### 1. 服务器环境要求
-- Node.js 18+
+### 1. GitHub Secrets
+
+在 GitHub 仓库的 `Settings -> Secrets and variables -> Actions` 中配置：
+
+- `ACR_REGISTRY`：ACR registry 地址，例如 `registry.cn-hangzhou.aliyuncs.com`
+- `ACR_NAMESPACE`：ACR 命名空间，例如 `your-namespace`
+- `ACR_USERNAME`：ACR 用户名
+- `ACR_PASSWORD`：ACR 密码
+- `SERVER_HOST`：服务器 IP 或域名
+- `SERVER_USER`：服务器登录用户
+- `SERVER_SSH_KEY`：GitHub Actions 用于 SSH 登录服务器的私钥
+
+最终镜像名格式为：
+```text
+$ACR_REGISTRY/$ACR_NAMESPACE/photo-to-3d:latest
+```
+
+### 2. 服务器环境要求
+
+- Docker
 - Nginx
-- PM2（进程管理器）
+- 可通过 SSH 登录
+- 开放 22、80、443 端口
 
-### 2. 在服务器上安装环境
+## 服务器初始化
 
-SSH登录到你的阿里云服务器：
+### 1. 安装 Docker
+
+Ubuntu / Debian：
 ```bash
-ssh root@your-server-ip
-```
-
-安装Node.js：
-```bash
-# 使用nvm安装（推荐）
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
-source ~/.bashrc
-nvm install 18
-nvm use 18
-```
-
-安装PM2：
-```bash
-npm install -g pm2
-```
-
-安装Nginx：
-```bash
-# Ubuntu/Debian
 apt update
-apt install nginx
-
-# CentOS
-yum install nginx
+apt install -y docker.io
+systemctl enable docker
+systemctl start docker
 ```
 
-## 部署方式
-
-### 方式一：使用自动部署脚本（推荐）
-
-1. 修改 `deploy.sh` 中的配置：
+CentOS：
 ```bash
-SERVER_USER="root"  # 你的服务器用户名
-SERVER_IP="your-server-ip"  # 你的服务器IP
+yum install -y docker
+systemctl enable docker
+systemctl start docker
 ```
 
-2. 确保可以SSH免密登录服务器：
+### 2. 安装 Nginx
+
+Ubuntu / Debian：
 ```bash
-# 生成SSH密钥（如果还没有）
-ssh-keygen -t rsa
-
-# 复制公钥到服务器
-ssh-copy-id root@your-server-ip
+apt update
+apt install -y nginx
 ```
 
-3. 运行部署脚本：
+CentOS：
 ```bash
-./deploy.sh
+yum install -y nginx
 ```
 
-### 方式二：手动部署
+### 3. 验证 Docker 可用
 
-#### 步骤1：本地构建
 ```bash
-npm run build
+docker --version
 ```
 
-#### 步骤2：上传文件到服务器
+## 自动部署流程
+
+当代码 push 到 `main` 分支时，GitHub Actions 会自动执行：
+
+1. 拉取代码
+2. 登录 ACR
+3. 构建 Docker 镜像
+4. 推送两个 tag：
+   - `${GITHUB_SHA}`
+   - `latest`
+5. SSH 登录服务器
+6. 在服务器上执行：
+   - `docker login`
+   - `docker pull`
+   - 停止旧容器
+   - 删除旧容器
+   - 启动新容器
+
+容器启动命令等价于：
 ```bash
-# 打包必要文件
-tar -czf photo-to-3d.tar.gz .next public package.json package-lock.json ecosystem.config.js next.config.ts
-
-# 上传到服务器
-scp photo-to-3d.tar.gz root@your-server-ip:/tmp/
+docker run -d \
+  --name photo-to-3d \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  registry.cn-hangzhou.aliyuncs.com/your-namespace/photo-to-3d:latest
 ```
 
-#### 步骤3：在服务器上部署
-SSH登录服务器后执行：
-```bash
-# 创建部署目录
-mkdir -p /var/www/photo-to-3d
-cd /var/www/photo-to-3d
+## Nginx 反向代理
 
-# 解压文件
-tar -xzf /tmp/photo-to-3d.tar.gz
+建议让 Nginx 监听 80/443，再反向代理到容器的 3000 端口。
 
-# 安装依赖
-npm ci --production
-
-# 启动应用
-pm2 start ecosystem.config.js
-pm2 save
-pm2 startup  # 设置开机自启
-```
-
-## 配置Nginx反向代理
-
-1. 复制Nginx配置：
-```bash
-scp nginx.conf root@your-server-ip:/etc/nginx/sites-available/photo-to-3d
-```
-
-2. 在服务器上启用配置：
-```bash
-# 创建软链接
-ln -s /etc/nginx/sites-available/photo-to-3d /etc/nginx/sites-enabled/
-
-# 测试配置
-nginx -t
-
-# 重启Nginx
-systemctl restart nginx
-```
-
-3. 修改 `nginx.conf` 中的域名：
+示例配置：
 ```nginx
-server_name your-domain.com;  # 替换为你的域名或IP
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
 ```
 
-## 配置域名（可选）
-
-如果你有域名：
-
-1. 在域名DNS设置中添加A记录指向服务器IP
-2. 修改 `nginx.conf` 中的 `server_name`
-3. 配置SSL证书（推荐使用Let's Encrypt）：
-
+启用配置：
 ```bash
-# 安装certbot
-apt install certbot python3-certbot-nginx
-
-# 获取证书
-certbot --nginx -d your-domain.com
-```
-
-## 常用PM2命令
-
-```bash
-pm2 list              # 查看所有应用
-pm2 logs photo-to-3d  # 查看日志
-pm2 restart photo-to-3d  # 重启应用
-pm2 stop photo-to-3d  # 停止应用
-pm2 delete photo-to-3d  # 删除应用
-pm2 monit             # 监控应用
-```
-
-## 防火墙配置
-
-确保开放必要的端口：
-```bash
-# 阿里云安全组规则中开放：
-# - 80 (HTTP)
-# - 443 (HTTPS)
-# - 22 (SSH)
-
-# 如果使用ufw防火墙：
-ufw allow 80
-ufw allow 443
-ufw allow 22
+nginx -t
+systemctl restart nginx
 ```
 
 ## 更新部署
 
-每次更新代码后，只需运行：
-```bash
-./deploy.sh
-```
-
-或手动执行：
-```bash
-npm run build
-# 上传文件...
-# 在服务器上：
-pm2 restart photo-to-3d
-```
+每次提交到 `main` 后会自动部署，无需手动登录服务器执行发布命令。
 
 ## 故障排查
 
-查看应用日志：
+### 查看 GitHub Actions 日志
+
+在 GitHub 仓库的 `Actions` 页面查看 `Deploy to Aliyun` workflow 日志。
+
+### 查看服务器容器状态
+
 ```bash
-pm2 logs photo-to-3d
+docker ps -a
 ```
 
-查看Nginx日志：
+### 查看应用日志
+
+```bash
+docker logs -f photo-to-3d
+```
+
+### 手动重启容器
+
+```bash
+docker restart photo-to-3d
+```
+
+### 手动拉取最新镜像并重建
+
+```bash
+docker login registry.cn-hangzhou.aliyuncs.com
+docker pull registry.cn-hangzhou.aliyuncs.com/your-namespace/photo-to-3d:latest
+docker stop photo-to-3d || true
+docker rm photo-to-3d || true
+docker run -d \
+  --name photo-to-3d \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  registry.cn-hangzhou.aliyuncs.com/your-namespace/photo-to-3d:latest
+```
+
+### 查看 Nginx 日志
+
 ```bash
 tail -f /var/log/nginx/error.log
 tail -f /var/log/nginx/access.log
 ```
 
-检查端口占用：
-```bash
-netstat -tlnp | grep 3000
-```
-
-## 性能优化建议
-
-1. 启用Nginx gzip压缩
-2. 配置静态文件缓存
-3. 使用CDN加速静态资源
-4. 根据服务器配置调整PM2实例数量
-
 ## 访问应用
 
-- 直接访问：`http://your-server-ip`
-- 域名访问：`http://your-domain.com`
-- HTTPS访问：`https://your-domain.com`（配置SSL后）
+- 直接访问：`http://your-server-ip:3000`
+- 反向代理后：`http://your-domain.com`
+- 配置 SSL 后：`https://your-domain.com`
