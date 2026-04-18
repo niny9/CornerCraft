@@ -1,0 +1,77 @@
+{
+  "schema_version": "layout_result_v1",
+  "style_id": "clean_creator",
+  "bg_url": "/bg.glb",
+  "score": 1,
+  "warnings": [],
+  "things": [
+    {
+      "asset_id": "laptop",
+      "url": "/model/laptop.glb",
+      "category": "laptop",
+      "position": [
+        0.5,
+        0.7,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 1,
+      "reason": "Placed by zone anchor in rear_center."
+    },
+    {
+      "asset_id": "notebook",
+      "url": "/model/notebook.glb",
+      "category": "notebook",
+      "position": [
+        0.2692,
+        0.6417,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 1,
+      "reason": "Placed left_of laptop."
+    },
+    {
+      "asset_id": "penholder",
+      "url": "/model/penholder.glb",
+      "category": "penholder",
+      "position": [
+        0.7417,
+        0.8,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        270
+      ],
+      "scale": 1,
+      "reason": "Placed right_of laptop."
+    },
+    {
+      "asset_id": "cup",
+      "url": "/model/cup.glb",
+      "category": "cup",
+      "position": [
+        0.14,
+        0.77,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": 1,
+      "reason": "Placed by zone anchor in rear_left."
+    }
+  ]
+}

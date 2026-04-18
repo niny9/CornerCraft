@@ -1,8 +1,15 @@
 @import "tailwindcss";
 
+/* Disable Tailwind v4 automatic dark mode */
+@custom-variant dark (&:is(.dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f8f7fc;
+  --foreground: #1a1a2e;
+  --primary: #7c5cfc;
+  --primary-light: #a78bfa;
+  --primary-dark: #6344e0;
+  color-scheme: light;
 }
 
 @theme inline {
@@ -12,15 +19,152 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* 页面外框紫色左边线 */
+.page-container {
+  position: relative;
+}
+.page-container::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, var(--primary), var(--primary-light));
+}
+
+/* 卡片 */
+.card {
+  background: #fff;
+  border-radius: 20px;
+  border: 1px solid #ece9f5;
+  box-shadow: 0 2px 16px rgba(124, 92, 252, 0.07);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.card:hover {
+  border-color: #d4cef0;
+  box-shadow: 0 4px 24px rgba(124, 92, 252, 0.12);
+}
+.card:active {
+  box-shadow: 0 1px 8px rgba(124, 92, 252, 0.1);
+}
+
+/* 紫色渐变主按钮 */
+.btn-primary {
+  background: linear-gradient(135deg, #7c5cfc 0%, #a78bfa 100%);
+  color: #fff;
+  border: none;
+  border-radius: 18px;
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: 0.01em;
+  box-shadow: 0 6px 24px rgba(124, 92, 252, 0.35);
+  transition: box-shadow 0.3s, transform 0.2s, opacity 0.2s;
+}
+.btn-primary:hover:not(:disabled) {
+  box-shadow: 0 8px 32px rgba(124, 92, 252, 0.5);
+  transform: translateY(-1px);
+}
+.btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 风格关键词标签 */
+.keyword-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 20px;
+  border-radius: 999px;
+  border: 1.5px solid #e0dced;
+  background: #fff;
+  color: #4a4560;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+.keyword-pill:hover {
+  border-color: var(--primary-light);
+  background: #f5f3ff;
+}
+.keyword-pill.selected {
+  border-color: var(--primary);
+  background: #ede9ff;
+  color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+/* 输入框 */
+.input-field {
+  background: #fff;
+  border: 1.5px solid #e0dced;
+  border-radius: 16px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.input-field:focus {
+  outline: none;
+  border-color: var(--primary-light);
+  box-shadow: 0 0 0 3px rgba(124, 92, 252, 0.1);
+}
+
+/* 预览页卡片 */
+.preview-card {
+  background: #fff;
+  border-radius: 20px;
+  border: 1px solid #ece9f5;
+  box-shadow: 0 2px 16px rgba(124, 92, 252, 0.07);
+}
+
+/* loading 旋转环 */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.loading-ring {
+  animation: spin 1.2s linear infinite;
+}
+
+/* 渐变分割线 */
+.divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #d4cef0, transparent);
+}
+
+/* 删除图标弹入 */
+@keyframes pop-in {
+  0% { transform: scale(0); opacity: 0; }
+  70% { transform: scale(1.2); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.pop-in {
+  animation: pop-in 0.2s ease-out;
+}
+
+/* 物品槽 hover */
+.slot-hover {
+  transition: box-shadow 0.3s, border-color 0.3s;
+}
+.slot-hover:hover {
+  box-shadow: 0 0 12px rgba(124, 92, 252, 0.2);
+  border-color: var(--primary-light);
+}
+
+/* 相机弹层 */
+.camera-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }

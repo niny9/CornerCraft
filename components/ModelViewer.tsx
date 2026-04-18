@@ -30,7 +30,7 @@ let bgCenterY = 0;
 let itemsGroupRef: THREE.Group | null = null;
 let currentZoom = 1;
 
-function BackgroundModel({ url, onLoaded }: { url: string; onLoaded: () => void }) {
+function BackgroundModel({ url, onLoaded }: { url: string; onLoaded: (aspect: number) => void }) {
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(), [scene]);
   const { camera, size } = useThree();
@@ -66,7 +66,8 @@ function BackgroundModel({ url, onLoaded }: { url: string; onLoaded: () => void 
 
     camera.add(cloned);
     bgSceneRef = cloned;
-    onLoadedRef.current();
+    const modelAspect = modelSize.x / modelSize.y;
+    onLoadedRef.current(modelAspect);
     return () => {
       camera.remove(cloned);
       bgSceneRef = null;
@@ -250,9 +251,12 @@ function LoadingSpinner() {
   );
 }
 
-function SceneItems({ models, backgroundUrl, controlsRef, onRemoveModel, onPositionChange, onContextMenu }: ModelViewerProps & { controlsRef: React.RefObject<OrbitControlsImpl | null>; onContextMenu?: (index: number, x: number, y: number) => void }) {
+function SceneItems({ models, backgroundUrl, controlsRef, onRemoveModel, onPositionChange, onContextMenu, onAspectRatio }: ModelViewerProps & { controlsRef: React.RefObject<OrbitControlsImpl | null>; onContextMenu?: (index: number, x: number, y: number) => void; onAspectRatio?: (aspect: number) => void }) {
   const [bgLoaded, setBgLoaded] = useState(!backgroundUrl);
-  const handleBgLoaded = useCallback(() => setBgLoaded(true), []);
+  const handleBgLoaded = useCallback((aspect: number) => {
+    setBgLoaded(true);
+    onAspectRatio?.(aspect);
+  }, [onAspectRatio]);
   const groupRef = useRef<THREE.Group>(null);
 
   useEffect(() => {
@@ -283,9 +287,10 @@ interface SceneCanvasProps {
   backgroundUrl?: string;
   onPositionChange?: (index: number, position: [number, number, number]) => void;
   onContextMenu?: (index: number, x: number, y: number) => void;
+  onAspectRatio?: (aspect: number) => void;
 }
 
-const SceneCanvas = memo(function SceneCanvas({ models, backgroundUrl, onPositionChange, onContextMenu }: SceneCanvasProps) {
+const SceneCanvas = memo(function SceneCanvas({ models, backgroundUrl, onPositionChange, onContextMenu, onAspectRatio }: SceneCanvasProps) {
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
 
   return (
@@ -300,6 +305,7 @@ const SceneCanvas = memo(function SceneCanvas({ models, backgroundUrl, onPositio
           controlsRef={controlsRef}
           onPositionChange={onPositionChange}
           onContextMenu={onContextMenu}
+          onAspectRatio={onAspectRatio}
         />
       </Suspense>
       <OrbitControls ref={controlsRef} enableZoom={false} />
@@ -310,11 +316,14 @@ const SceneCanvas = memo(function SceneCanvas({ models, backgroundUrl, onPositio
 
 export default function ModelViewer({ models, backgroundUrl, onRemoveModel, onPositionChange }: ModelViewerProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; index: number } | null>(null);
+  const [aspect, setAspect] = useState<number | null>(null);
   const handleContextMenu = useCallback((index: number, x: number, y: number) => setContextMenu({ index, x, y }), []);
+  const handleAspectRatio = useCallback((a: number) => setAspect(a), []);
 
   return (
     <div
-      className="w-full h-96 bg-gray-100 rounded-lg relative"
+      className="w-full rounded-lg relative glow-border bg-slate-900/50"
+      style={aspect ? { aspectRatio: `${aspect}` } : { height: '24rem' }}
       onContextMenu={(e) => e.preventDefault()}
       onClick={() => setContextMenu(null)}
     >
@@ -323,13 +332,19 @@ export default function ModelViewer({ models, backgroundUrl, onRemoveModel, onPo
         backgroundUrl={backgroundUrl}
         onPositionChange={onPositionChange}
         onContextMenu={handleContextMenu}
+        onAspectRatio={handleAspectRatio}
       />
 
       {/* 右键删除图标 */}
       {contextMenu && (
         <button
-          className="absolute flex items-center justify-center w-8 h-8 bg-red-500 hover:bg-red-600 rounded-full shadow-lg z-50 transition-colors"
-          style={{ left: contextMenu.x - 16, top: contextMenu.y - 16 }}
+          className="absolute flex items-center justify-center w-9 h-9 rounded-full z-50 pop-in"
+          style={{
+            left: contextMenu.x - 18,
+            top: contextMenu.y - 18,
+            background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+            boxShadow: '0 0 20px rgba(239, 68, 68, 0.5)',
+          }}
           onClick={(e) => {
             e.stopPropagation();
             onRemoveModel?.(contextMenu.index);

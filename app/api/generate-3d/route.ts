@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const { image } = await request.json();
+    const { image, keywords, vision } = await request.json();
 
     // 这里需要集成实际的图像转3D模型API
     // 可选方案：
@@ -28,16 +28,14 @@ export async function POST(request: NextRequest) {
     // bounds: 归一化坐标 [minX, minY, maxX, maxY] 限制拖拽范围
     // scale: 可选微调，默认 1，不需要预定义模型大小
     //
-    // 场景布局：背景房间 + 桌子居中偏下 + 两个杯子放在桌面上
-    // 桌子中心 (0.5, 0.35)，桌面范围大约 X: 0.25~0.75, Y: 0.3~0.45
-    const tableSurface: [number, number, number, number] = [0.25, 0.3, 0.75, 0.45];
-
+    // 参照 layout-result.json 的布局数据
     return NextResponse.json({
       bgUrl: '/bg.glb',
       things: [
-        { id: 'table-1',  url: '/table.glb', position: [0.5, 0.35, 0], fixed: true },
-        { id: 'cup-1', url: '/cup.glb', position: [0.4, 0.38, 0], bounds: tableSurface },
-        { id: 'cup-2', url: '/cup.glb', position: [0.6, 0.38, 0], bounds: tableSurface },
+        { id: 'laptop-1',    url: '/laptop.glb',    position: [0.5, 0.7, 0],      rotation: [0, 0, 0],   scale: 1 },
+        { id: 'notebook-1',  url: '/notebook.glb',  position: [0.2692, 0.6417, 0], rotation: [0, 0, 0],   scale: 1 },
+        { id: 'penholder-1', url: '/penholder.glb', position: [0.7417, 0.8, 0],    rotation: [0, 0, 270], scale: 1 },
+        { id: 'cup-1',       url: '/cup.glb',       position: [0.14, 0.77, 0],     rotation: [0, 0, 0],   scale: 1 },
       ],
       success: true,
     });
