@@ -29,4 +29,4 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          script: sh /var/www/photo-to-3d/deploy.sh
+          script: sh /home/admin/photo-to-3d/deploy.sh
