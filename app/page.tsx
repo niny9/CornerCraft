@@ -6,6 +6,7 @@ import { useGLTF, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import CameraCapture, { CameraCaptureRef } from '@/components/CameraCapture';
 import ModelViewer, { ModelItem } from '@/components/ModelViewer';
+import RoomViewerTry from '@/components/RoomViewerTry';
 
 const STYLE_KEYWORDS = ['Japandi', 'Minimalist', 'Bohemian', 'Industrial', 'Mid-Century'];
 
@@ -241,12 +242,20 @@ export default function Home() {
               </div>
             )}
             {models.length > 0 && !loading && (
-              <ModelViewer
-                models={models}
-                backgroundUrl={backgroundUrl}
-                onRemoveModel={handleRemoveModel}
-                onPositionChange={handlePositionChange}
-              />
+              <>
+                <ModelViewer
+                  models={models}
+                  backgroundUrl={backgroundUrl}
+                  onRemoveModel={handleRemoveModel}
+                  onPositionChange={handlePositionChange}
+                />
+
+                <div className="mt-4 space-y-3">
+                  <div className="divider" />
+                  <h3 className="text-xs font-medium text-gray-400 tracking-wider uppercase">Study Room Demo (Try)</h3>
+                  <RoomViewerTry />
+                </div>
+              </>
             )}
 
             {/* Removed items */}
